@@ -1,0 +1,6 @@
+<!-- Full-bleed monogram so it works as a maskable Android icon (safe zone respected) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#aa3bff" />
+  <text x="50%" y="50%" dy="0.35em" text-anchor="middle"
+        font-family="system-ui, sans-serif" font-size="240" font-weight="600" fill="#fff">MN</text>
+</svg>
