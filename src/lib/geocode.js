@@ -9,6 +9,26 @@ export async function geocodeCity(city) {
     const [hit] = await res.json()
     return hit ? { lat: +hit.lat, lng: +hit.lon } : null
   } catch {
-    return null // offline or rate-limited — saving the contact still succeeds
+    return null
+  }
+}
+
+export async function searchPlaces(query) {
+  const q = query?.trim()
+  if (!q || q.length < 2) return []
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=5&addressdetails=1&q=${encodeURIComponent(q)}`
+    const res = await fetch(url, { headers: { 'Accept-Language': 'en' } })
+    const hits = await res.json()
+    return hits.map((h) => ({
+      lat: +h.lat,
+      lng: +h.lon,
+      city: h.address.city || h.address.town || h.address.village || h.address.county || '',
+      state: h.address.state || '',
+      country: h.address.country || '',
+      displayName: h.display_name,
+    }))
+  } catch {
+    return []
   }
 }

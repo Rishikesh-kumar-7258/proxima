@@ -23,10 +23,8 @@ export default function Login() {
     <main className="grid min-h-svh place-items-center p-6">
      <div className="flex w-full max-w-sm flex-col gap-8 md:rounded-3xl md:border md:border-gray-200 md:bg-white md:p-10 md:shadow-sm">
       <div className="flex flex-col items-center gap-3 text-center">
-        <div className="grid size-16 place-items-center rounded-2xl bg-violet-600 text-2xl font-bold text-white shadow-lg shadow-violet-600/30">
-          MN
-        </div>
-        <h1 className="text-2xl font-bold tracking-tight">My Network</h1>
+        <img src="/icon-192.png" alt="" className="size-16 rounded-2xl shadow-lg shadow-violet-600/30" />
+        <h1 className="text-2xl font-bold tracking-tight">Proxima</h1>
         <p className="max-w-xs text-gray-500">Your network, on a map. Sign in to begin.</p>
       </div>
 

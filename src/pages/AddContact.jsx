@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { geocodeCity } from '../lib/geocode'
 import { useContacts } from '../hooks/useContacts'
 import TagInput from '../components/TagInput'
+import PlaceAutocomplete from '../components/PlaceAutocomplete'
 
 const EMPTY = {
   name: '', phone: '', email: '', role: '', company: '', industry: '',
@@ -50,19 +50,9 @@ export default function AddContact() {
     }
 
     const { name, phone, email, role, company, industry, how_met, food_prefs, notes, tags } = form
-
-    // Geocode each address sequentially (Nominatim rate limit: 1 req/s).
-    const addresses = []
-    for (const addr of form.addresses ?? []) {
-      if (!addr.city.trim()) { addresses.push(addr); continue }
-      const prev = (id ? form.addresses : [])?.find((a) => a.city === addr.city && a.lat)
-      if (prev) { addresses.push(prev); continue }
-      if (addresses.length > 0) await new Promise((r) => setTimeout(r, 1100))
-      const geo = await geocodeCity(addr.city)
-      addresses.push({ ...addr, lat: geo?.lat ?? null, lng: geo?.lng ?? null })
-    }
-
+    const addresses = (form.addresses ?? []).filter((a) => a.city)
     const primary = addresses[0] ?? {}
+
     await supabase.from('contacts').upsert({
       id: form.id, user_id: user.id, name, phone, email, role, company, industry,
       city: primary.city ?? null, how_met, food_prefs, notes, tags, photo_url,
@@ -191,35 +181,67 @@ function Section({ title, children }) {
   )
 }
 
+const LABEL_PRESETS = ['Home', 'Hometown', 'Office', 'Studied', 'Visited']
+
 function AddressFields({ addresses, onChange }) {
-  const update = (idx, key, value) => {
-    const next = addresses.map((a, i) => (i === idx ? { ...a, [key]: value } : a))
-    onChange(next)
+  const [customIdx, setCustomIdx] = useState(null)
+
+  const updateLabel = (idx, value) => {
+    if (value === '__custom__') {
+      setCustomIdx(idx)
+      return
+    }
+    setCustomIdx(null)
+    onChange(addresses.map((a, i) => (i === idx ? { ...a, label: value } : a)))
   }
-  const add = () => onChange([...addresses, { label: 'Other', city: '' }])
-  const remove = (idx) => onChange(addresses.filter((_, i) => i !== idx))
+  const commitCustom = (idx, value) => {
+    const label = value.trim() || 'Other'
+    onChange(addresses.map((a, i) => (i === idx ? { ...a, label } : a)))
+    setCustomIdx(null)
+  }
+  const selectPlace = (idx, place) => {
+    if (!place) {
+      onChange(addresses.map((a, i) => (i === idx ? { label: a.label, city: '' } : a)))
+      return
+    }
+    onChange(addresses.map((a, i) =>
+      i === idx ? { label: a.label, city: place.city, state: place.state, country: place.country, lat: place.lat, lng: place.lng } : a,
+    ))
+  }
+  const add = () => onChange([...addresses, { label: 'Visited', city: '' }])
+  const remove = (idx) => { onChange(addresses.filter((_, i) => i !== idx)); if (customIdx === idx) setCustomIdx(null) }
+
+  const isPreset = (label) => LABEL_PRESETS.includes(label)
 
   return (
     <div className="flex flex-col gap-3">
       {addresses.map((addr, i) => (
-        <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <select
-            value={addr.label}
-            onChange={(e) => update(i, 'label', e.target.value)}
-            className="input w-full shrink-0 sm:w-28"
-          >
-            <option>Home</option>
-            <option>Office</option>
-            <option>Other</option>
-          </select>
-          <input
-            placeholder="City"
-            value={addr.city}
-            onChange={(e) => update(i, 'city', e.target.value)}
-            className="input flex-1"
+        <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-start">
+          {customIdx === i ? (
+            <input
+              autoFocus
+              placeholder="e.g. Vacation, Family"
+              className="input w-full shrink-0 sm:w-36"
+              onBlur={(e) => commitCustom(i, e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && commitCustom(i, e.target.value)}
+            />
+          ) : (
+            <select
+              value={isPreset(addr.label) ? addr.label : '__custom__'}
+              onChange={(e) => updateLabel(i, e.target.value)}
+              className="input w-full shrink-0 sm:w-36"
+            >
+              {LABEL_PRESETS.map((l) => <option key={l} value={l}>{l}</option>)}
+              {!isPreset(addr.label) && <option value="__custom__">{addr.label}</option>}
+              <option value="__custom__">Custom...</option>
+            </select>
+          )}
+          <PlaceAutocomplete
+            value={addr.city ? addr : null}
+            onSelect={(place) => selectPlace(i, place)}
           />
           {addresses.length > 1 && (
-            <button type="button" onClick={() => remove(i)} className="text-sm font-medium text-red-500 hover:text-red-600">
+            <button type="button" onClick={() => remove(i)} className="mt-1 text-sm font-medium text-red-500 hover:text-red-600 sm:mt-2.5">
               Remove
             </button>
           )}

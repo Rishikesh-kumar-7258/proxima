@@ -84,7 +84,7 @@ export default function ContactProfile() {
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Addresses</h2>
           <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {contact.addresses.map((a, i) => (
-              <Fact key={i} label={a.label} value={a.city} />
+              <Fact key={i} label={a.label} value={[a.city, a.state, a.country].filter(Boolean).join(', ')} />
             ))}
           </dl>
         </div>

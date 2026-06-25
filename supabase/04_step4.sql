@@ -11,7 +11,9 @@ SET addresses = jsonb_build_array(
 )
 WHERE city IS NOT NULL AND city != '';
 
--- Updated radius function that unnests the JSONB addresses array.
+-- Drop the old function first — return type changed (added address_label column).
+DROP FUNCTION IF EXISTS contacts_within_radius(float, float, float);
+
 CREATE OR REPLACE FUNCTION contacts_within_radius(
   user_lat float, user_lng float, radius_km float
 )

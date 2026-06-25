@@ -58,8 +58,8 @@ const sideLink = (active) =>
 function Brand() {
   return (
     <div className="flex items-center gap-2.5">
-      <span className="grid size-9 place-items-center rounded-xl bg-violet-600 text-sm font-bold text-white">MN</span>
-      <span className="font-bold tracking-tight">My Network</span>
+      <img src="/icon-192.png" alt="" className="size-9 rounded-xl" />
+      <span className="font-bold tracking-tight">Proxima</span>
     </div>
   )
 }

@@ -35,13 +35,14 @@ export default function MapView() {
   const [radius, setRadius] = useState(10)
   const [showRadius, setShowRadius] = useState(false)
   const [flyTarget, setFlyTarget] = useState(null)
+  const [activeFilters, setActiveFilters] = useState(new Set())
 
   useEffect(() => { fetch() }, [fetch])
 
   const me = coords ?? DEFAULT_CENTER
   const hasGps = !!coords
 
-  const located = useMemo(() =>
+  const allLocated = useMemo(() =>
     contacts.flatMap((c) => {
       const addrs = c.addresses?.filter((a) => a.lat != null && a.lng != null) ?? []
       if (addrs.length > 0) {
@@ -51,6 +52,8 @@ export default function MapView() {
           lng: a.lng,
           addressLabel: a.label,
           addressCity: a.city,
+          addressState: a.state,
+          addressCountry: a.country,
           addrIdx: i,
           dist: distanceKm(me, a),
         }))
@@ -62,6 +65,31 @@ export default function MapView() {
     }).sort((a, b) => a.dist - b.dist),
     [contacts, me],
   )
+
+  // Collect all unique labels for the filter bar
+  const availableLabels = useMemo(() => {
+    const labels = new Map()
+    for (const item of allLocated) {
+      const l = item.addressLabel ?? 'Other'
+      labels.set(l, (labels.get(l) ?? 0) + 1)
+    }
+    return labels
+  }, [allLocated])
+
+  // Apply filters
+  const located = useMemo(() => {
+    if (activeFilters.size === 0) return allLocated
+    return allLocated.filter((c) => activeFilters.has(c.addressLabel ?? 'Other'))
+  }, [allLocated, activeFilters])
+
+  const toggleFilter = (label) => {
+    setActiveFilters((prev) => {
+      const next = new Set(prev)
+      if (next.has(label)) next.delete(label)
+      else next.add(label)
+      return next
+    })
+  }
 
   const inRadius = (d) => hasGps && d <= radius
   const noLocation = contacts.filter((c) => {
@@ -94,6 +122,30 @@ export default function MapView() {
           </div>
         </div>
       </div>
+
+      {/* Filter bar */}
+      {availableLabels.size > 1 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Show:</span>
+          <button
+            type="button"
+            onClick={() => setActiveFilters(new Set())}
+            className={`rounded-full px-3 py-1 text-xs font-medium transition ${activeFilters.size === 0 ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+          >
+            All ({allLocated.length})
+          </button>
+          {[...availableLabels.entries()].map(([label, count]) => (
+            <button
+              key={label}
+              type="button"
+              onClick={() => toggleFilter(label)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition ${activeFilters.has(label) ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
+            >
+              {label} ({count})
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_22rem] xl:grid-cols-[minmax(0,1.9fr)_24rem]">
         {/* Map */}
@@ -163,8 +215,11 @@ export default function MapView() {
                         <span className="ml-1.5 inline-block size-2 rounded-full" style={{ backgroundColor: WARMTH_COLORS[w] }} />
                       </div>
                     </div>
-                    {c.addressLabel && <div className="text-xs text-gray-400">{c.addressLabel}</div>}
+                    {c.addressLabel && (
+                      <span className="mt-1 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{c.addressLabel}</span>
+                    )}
                     {(c.role || c.addressCity) && <div>{[c.role, c.addressCity].filter(Boolean).join(' · ')}</div>}
+                    {c.addressState && <div className="text-xs text-gray-400">{[c.addressState, c.addressCountry].filter(Boolean).join(', ')}</div>}
                     {c.tags?.length > 0 && <div className="mt-1 text-violet-600">{c.tags.join(', ')}</div>}
                     {hasGps && <div className="mt-1 text-gray-500">{c.dist.toFixed(1)} km away</div>}
                     <Link to={`/contact/${c.id}`} className="mt-1 block text-sm font-medium text-violet-600">View profile →</Link>
@@ -198,21 +253,22 @@ export default function MapView() {
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">
                         {c.name}
-                        {c.addressLabel && <span className="ml-1.5 text-xs font-normal text-gray-400">({c.addressLabel})</span>}
+                        {c.addressLabel && (
+                          <span className="ml-1.5 rounded-full bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-500">{c.addressLabel}</span>
+                        )}
                       </p>
                       <p className="truncate text-sm text-gray-500">{[c.role, c.addressCity].filter(Boolean).join(' · ')}</p>
                     </div>
                     {hasGps && <span className="shrink-0 text-sm tabular-nums text-gray-400">{c.dist.toFixed(1)} km</span>}
                   </button>
-                  <Link to={`/contact/${c.id}`} className="mt-1 block px-3 text-xs font-medium text-violet-600 hover:text-violet-700">
-                    View profile →
-                  </Link>
                 </li>
               )
             })}
             {located.length === 0 && (
               <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-10 text-center text-gray-400">
-                No contacts have a location yet. Add a city to a contact to map them.
+                {activeFilters.size > 0
+                  ? 'No contacts match the selected filters.'
+                  : 'No contacts have a location yet. Add a city to a contact to map them.'}
               </p>
             )}
           </ul>

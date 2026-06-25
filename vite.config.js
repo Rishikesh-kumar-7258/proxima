@@ -11,15 +11,17 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate', // service worker refreshes itself silently on each deploy
       manifest: {
-        name: 'My Network',
-        short_name: 'Network',
+        name: 'Proxima',
+        short_name: 'Proxima',
         description: 'Your personal network intelligence, on a map.',
-        theme_color: '#aa3bff',
+        theme_color: '#7c3aed',
         background_color: '#16171d',
-        display: 'standalone', // drops browser chrome so it feels like a native Android app
+        display: 'standalone',
         start_url: '/',
         icons: [
-          { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
       },
     }),
