@@ -5,7 +5,8 @@ const warmthDot = { hot: 'bg-green-500', warm: 'bg-amber-500', cold: 'bg-gray-40
 const initials = (name) => name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
 
 export default function ContactCard({ contact }) {
-  const { name, role, company, city, tags, photo_url, last_interaction } = contact
+  const { name, role, company, city, tags, photo_url, last_interaction, addresses } = contact
+  const displayCity = addresses?.[0]?.city || city
   return (
     <Link to={`/contact/${contact.id}`} className="card flex items-center gap-3 p-3">
       {/* Photo, or initials fallback */}
@@ -22,9 +23,9 @@ export default function ContactCard({ contact }) {
           <span className={`size-2 shrink-0 rounded-full ${warmthDot[warmthOf(last_interaction)]}`} />
           <p className="truncate font-semibold">{name}</p>
         </div>
-        {(role || company || city) && (
+        {(role || company || displayCity) && (
           <p className="truncate text-sm text-gray-500">
-            {[role, company].filter(Boolean).join(' · ')}{city && ` — ${city}`}
+            {[role, company].filter(Boolean).join(' · ')}{displayCity && ` — ${displayCity}`}
           </p>
         )}
         {tags?.length > 0 && (

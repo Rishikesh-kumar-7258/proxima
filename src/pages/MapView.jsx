@@ -1,34 +1,73 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MapContainer, TileLayer, Circle, CircleMarker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Circle, CircleMarker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useContacts } from '../hooks/useContacts'
 import { useLocation } from '../hooks/useLocation'
 import { distanceKm } from '../lib/distance'
+import { warmthOf } from '../lib/warmth'
 
-const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 } // India — used until/unless GPS resolves
+const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 }
+
+const WARMTH_COLORS = { hot: '#22c55e', warm: '#f59e0b', cold: '#9ca3af' }
+
+function RecenterMap({ center, zoom }) {
+  const map = useMap()
+  const lat = center[0]
+  const lng = center[1]
+  useEffect(() => {
+    map.flyTo([lat, lng], zoom, { duration: 1.5 })
+  }, [map, lat, lng, zoom])
+  return null
+}
+
+function FlyToTarget({ target }) {
+  const map = useMap()
+  useEffect(() => {
+    if (target) map.flyTo([target.lat, target.lng], 14, { duration: 1 })
+  }, [map, target])
+  return null
+}
 
 export default function MapView() {
   const { contacts, fetch } = useContacts()
   const { coords, loading } = useLocation()
-  const [radius, setRadius] = useState(10) // km
+  const [radius, setRadius] = useState(10)
+  const [showRadius, setShowRadius] = useState(false)
+  const [flyTarget, setFlyTarget] = useState(null)
 
-  useEffect(() => { fetch() }, [fetch]) // ensure data even on a direct visit to /map
+  useEffect(() => { fetch() }, [fetch])
 
   const me = coords ?? DEFAULT_CENTER
   const hasGps = !!coords
 
-  // Tag every located contact with its live distance from me, nearest first.
   const located = useMemo(() =>
-    contacts
-      .filter((c) => c.lat != null && c.lng != null)
-      .map((c) => ({ ...c, dist: distanceKm(me, c) }))
-      .sort((a, b) => a.dist - b.dist),
+    contacts.flatMap((c) => {
+      const addrs = c.addresses?.filter((a) => a.lat != null && a.lng != null) ?? []
+      if (addrs.length > 0) {
+        return addrs.map((a, i) => ({
+          ...c,
+          lat: a.lat,
+          lng: a.lng,
+          addressLabel: a.label,
+          addressCity: a.city,
+          addrIdx: i,
+          dist: distanceKm(me, a),
+        }))
+      }
+      if (c.lat != null && c.lng != null) {
+        return [{ ...c, addressLabel: null, addressCity: c.city, addrIdx: 0, dist: distanceKm(me, c) }]
+      }
+      return []
+    }).sort((a, b) => a.dist - b.dist),
     [contacts, me],
   )
 
   const inRadius = (d) => hasGps && d <= radius
-  const noLocation = contacts.length - located.length
+  const noLocation = contacts.filter((c) => {
+    const hasAddr = c.addresses?.some((a) => a.lat != null) ?? false
+    return !hasAddr && c.lat == null
+  }).length
 
   if (loading) return <div className="grid min-h-[60svh] place-items-center text-gray-400">Locating you…</div>
 
@@ -58,9 +97,15 @@ export default function MapView() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.7fr)_22rem] xl:grid-cols-[minmax(0,1.9fr)_24rem]">
         {/* Map */}
-        <div className="relative isolate min-h-[66vh] w-full overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-sm lg:min-h-[78vh]">
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] bg-gradient-to-b from-gray-900/30 to-transparent px-4 pt-4">
-            <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-white/20 bg-white/90 p-4 shadow-lg shadow-gray-900/10 backdrop-blur">
+        <div className="relative isolate min-h-[55vh] w-full overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-sm lg:min-h-[78vh]">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] px-4 pt-4">
+            <button
+              onClick={() => setShowRadius((s) => !s)}
+              className="pointer-events-auto mb-2 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-violet-700 shadow-lg backdrop-blur lg:hidden"
+            >
+              {showRadius ? 'Hide radius' : `Radius: ${radius} km`}
+            </button>
+            <div className={`pointer-events-auto w-full max-w-sm rounded-2xl border border-white/20 bg-white/90 p-4 shadow-lg shadow-gray-900/10 backdrop-blur ${showRadius ? '' : 'hidden lg:block'}`}>
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Radius</p>
@@ -71,19 +116,21 @@ export default function MapView() {
               <input
                 type="range"
                 min="1"
-                max="50"
+                max="200"
                 value={radius}
                 onChange={(e) => setRadius(+e.target.value)}
                 className="w-full accent-violet-600"
               />
               <div className="mt-2 flex justify-between text-[11px] text-gray-400">
                 <span>1 km</span>
-                <span>50 km</span>
+                <span>200 km</span>
               </div>
             </div>
           </div>
           <MapContainer center={[me.lat, me.lng]} zoom={hasGps ? 11 : 4} className="h-full w-full" zoomControl={false}>
             <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <RecenterMap center={[me.lat, me.lng]} zoom={hasGps ? 11 : 4} />
+            <FlyToTarget target={flyTarget} />
 
             {hasGps && (
               <>
@@ -94,21 +141,37 @@ export default function MapView() {
               </>
             )}
 
-            {located.map((c) => (
-              <CircleMarker
-                key={c.id}
-                center={[c.lat, c.lng]}
-                radius={8}
-                pathOptions={{ color: '#fff', weight: 2, fillColor: inRadius(c.dist) ? '#22c55e' : '#3b82f6', fillOpacity: 1 }}
-              >
-                <Popup>
-                  <strong>{c.name}</strong>
-                  {(c.role || c.city) && <div>{[c.role, c.city].filter(Boolean).join(' · ')}</div>}
-                  {c.tags?.length > 0 && <div className="mt-1 text-violet-600">{c.tags.join(', ')}</div>}
-                  {hasGps && <div className="mt-1 text-gray-500">{c.dist.toFixed(1)} km away</div>}
-                </Popup>
-              </CircleMarker>
-            ))}
+            {located.map((c) => {
+              const w = warmthOf(c.last_interaction)
+              return (
+                <CircleMarker
+                  key={`${c.id}-${c.addrIdx}`}
+                  center={[c.lat, c.lng]}
+                  radius={8}
+                  pathOptions={{
+                    color: inRadius(c.dist) ? '#aa3bff' : '#fff',
+                    weight: 2,
+                    fillColor: WARMTH_COLORS[w],
+                    fillOpacity: 1,
+                  }}
+                >
+                  <Popup>
+                    <div className="flex items-center gap-2">
+                      {c.photo_url && <img src={c.photo_url} alt="" className="size-8 rounded-full object-cover" />}
+                      <div>
+                        <strong>{c.name}</strong>
+                        <span className="ml-1.5 inline-block size-2 rounded-full" style={{ backgroundColor: WARMTH_COLORS[w] }} />
+                      </div>
+                    </div>
+                    {c.addressLabel && <div className="text-xs text-gray-400">{c.addressLabel}</div>}
+                    {(c.role || c.addressCity) && <div>{[c.role, c.addressCity].filter(Boolean).join(' · ')}</div>}
+                    {c.tags?.length > 0 && <div className="mt-1 text-violet-600">{c.tags.join(', ')}</div>}
+                    {hasGps && <div className="mt-1 text-gray-500">{c.dist.toFixed(1)} km away</div>}
+                    <Link to={`/contact/${c.id}`} className="mt-1 block text-sm font-medium text-violet-600">View profile →</Link>
+                  </Popup>
+                </CircleMarker>
+              )
+            })}
           </MapContainer>
         </div>
 
@@ -121,19 +184,32 @@ export default function MapView() {
             </div>
             {hasGps && <span className="rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700">Within radius highlighted</span>}
           </div>
-          <ul className="flex flex-col gap-2 lg:max-h-[calc(76vh-5rem)] lg:overflow-y-auto lg:pr-1">
-            {located.map((c) => (
-              <li key={c.id}>
-                <Link to={`/contact/${c.id}`} className="card flex items-center gap-3 p-3">
-                  <span className={`size-2.5 shrink-0 rounded-full ${inRadius(c.dist) ? 'bg-green-500' : 'bg-blue-500'}`} />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium">{c.name}</p>
-                    <p className="truncate text-sm text-gray-500">{[c.role, c.city].filter(Boolean).join(' · ')}</p>
-                  </div>
-                  {hasGps && <span className="shrink-0 text-sm tabular-nums text-gray-400">{c.dist.toFixed(1)} km</span>}
-                </Link>
-              </li>
-            ))}
+          <ul className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto pr-1 lg:max-h-[calc(76vh-5rem)]">
+            {located.map((c) => {
+              const w = warmthOf(c.last_interaction)
+              return (
+                <li key={`${c.id}-${c.addrIdx}`}>
+                  <button
+                    type="button"
+                    onClick={() => setFlyTarget({ lat: c.lat, lng: c.lng })}
+                    className="card flex w-full items-center gap-3 p-3 text-left"
+                  >
+                    <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: WARMTH_COLORS[w] }} />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium">
+                        {c.name}
+                        {c.addressLabel && <span className="ml-1.5 text-xs font-normal text-gray-400">({c.addressLabel})</span>}
+                      </p>
+                      <p className="truncate text-sm text-gray-500">{[c.role, c.addressCity].filter(Boolean).join(' · ')}</p>
+                    </div>
+                    {hasGps && <span className="shrink-0 text-sm tabular-nums text-gray-400">{c.dist.toFixed(1)} km</span>}
+                  </button>
+                  <Link to={`/contact/${c.id}`} className="mt-1 block px-3 text-xs font-medium text-violet-600 hover:text-violet-700">
+                    View profile →
+                  </Link>
+                </li>
+              )
+            })}
             {located.length === 0 && (
               <p className="rounded-2xl border border-dashed border-gray-200 px-4 py-10 text-center text-gray-400">
                 No contacts have a location yet. Add a city to a contact to map them.

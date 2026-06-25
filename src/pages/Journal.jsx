@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { aiParse } from '../lib/ai'
 import { useContacts } from '../hooks/useContacts'
 import MentionInput from '../components/MentionInput'
-import { Flame, Sparkles } from '../components/icons'
+import { Flame } from '../components/icons'
 
 const iso = (d) => d.toISOString().slice(0, 10)
 
@@ -15,7 +14,7 @@ export default function Journal() {
   const [text, setText] = useState('')
   const [tagged, setTagged] = useState([]) // contacts to link — from @mention or AI parse
   const [saving, setSaving] = useState(false)
-  const [finding, setFinding] = useState(false)
+  const [error, setError] = useState(null)
 
   // Central journal + each entry's linked contacts, newest first (one nested query).
   const load = async () => {
@@ -35,29 +34,38 @@ export default function Journal() {
   const post = async () => {
     if (!text.trim()) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
+    setError(null)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const linked = dedupe(tagged)
 
-    // Link everyone in the tagged set — the removable chips below the box are the source of truth.
-    const linked = dedupe(tagged)
+      const { data: entry, error: insertError } = await supabase
+        .from('journal_entries')
+        .insert({ user_id: user.id, content: text.trim() })
+        .select('id')
+        .single()
 
-    const { data: entry } = await supabase
-      .from('journal_entries')
-      .insert({ user_id: user.id, content: text.trim() })
-      .select('id')
-      .single()
+      if (insertError || !entry) {
+        setError('Could not save entry. Please try again.')
+        return
+      }
 
-    if (linked.length) {
-      await supabase.from('journal_contact_links').insert(
-        linked.map((c) => ({ journal_id: entry.id, contact_id: c.id, location_mentioned: c.city ?? null })),
-      )
-      // One write, two effects: logging someone warms the relationship (spec §6.5).
-      await supabase.from('contacts').update({ last_interaction: new Date().toISOString() })
-        .in('id', linked.map((c) => c.id))
-      fetchContacts()
+      if (linked.length) {
+        await supabase.from('journal_contact_links').insert(
+          linked.map((c) => ({ journal_id: entry.id, contact_id: c.id, location_mentioned: c.city ?? null })),
+        )
+        await supabase.from('contacts').update({ last_interaction: new Date().toISOString() })
+          .in('id', linked.map((c) => c.id))
+        fetchContacts()
+      }
+
+      setText(''); setTagged([])
+      load()
+    } catch {
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setSaving(false)
     }
-
-    setText(''); setTagged([]); setSaving(false)
-    load()
   }
 
   return (
@@ -76,11 +84,12 @@ export default function Journal() {
 
       {/* Composer */}
       <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4">
-        <MentionInput value={text} onChange={setText} contacts={contacts} onSelect={(c) => setTagged((t) => [...t, c])} />
+        <MentionInput value={text} onChange={(v) => { setText(v); setError(null) }} contacts={contacts} onSelect={(c) => setTagged((t) => [...t, c])} />
         <div className="flex items-center justify-between">
           <p className="text-xs text-gray-400">Type <span className="font-medium text-violet-600">@</span> to tag a contact</p>
           <button onClick={post} disabled={saving || !text.trim()} className="btn px-5">{saving ? 'Saving…' : 'Post'}</button>
         </div>
+        {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>}
       </div>
 
       {/* Central log */}

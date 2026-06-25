@@ -8,6 +8,7 @@ import TagInput from '../components/TagInput'
 const EMPTY = {
   name: '', phone: '', email: '', role: '', company: '', industry: '',
   city: '', how_met: '', food_prefs: '', notes: '', tags: [],
+  addresses: [{ label: 'Home', city: '' }],
 }
 
 export default function AddContact() {
@@ -18,11 +19,16 @@ export default function AddContact() {
   const [photo, setPhoto] = useState(null) // pending File, uploaded on save
   const [saving, setSaving] = useState(false)
 
-  // Edit mode: hydrate the form from the row.
   useEffect(() => {
     if (!id) return
     supabase.from('contacts').select('*').eq('id', id).single()
-      .then(({ data }) => data && setForm({ ...EMPTY, ...data }))
+      .then(({ data }) => {
+        if (!data) return
+        const addresses = data.addresses?.length
+          ? data.addresses
+          : [{ label: 'Home', city: data.city ?? '' }]
+        setForm({ ...EMPTY, ...data, addresses })
+      })
   }, [id])
 
   // Show the freshly picked file, else the saved photo. Memoised so we make one blob URL.
@@ -43,32 +49,42 @@ export default function AddContact() {
       photo_url = supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl
     }
 
-    // Turn the city into map coordinates (best-effort; null if it can't be resolved).
-    const { name, phone, email, role, company, industry, city, how_met, food_prefs, notes, tags } = form
-    const geo = await geocodeCity(city)
+    const { name, phone, email, role, company, industry, how_met, food_prefs, notes, tags } = form
 
-    // Send only editable columns; undefined id lets Postgres generate one on insert.
+    // Geocode each address sequentially (Nominatim rate limit: 1 req/s).
+    const addresses = []
+    for (const addr of form.addresses ?? []) {
+      if (!addr.city.trim()) { addresses.push(addr); continue }
+      const prev = (id ? form.addresses : [])?.find((a) => a.city === addr.city && a.lat)
+      if (prev) { addresses.push(prev); continue }
+      if (addresses.length > 0) await new Promise((r) => setTimeout(r, 1100))
+      const geo = await geocodeCity(addr.city)
+      addresses.push({ ...addr, lat: geo?.lat ?? null, lng: geo?.lng ?? null })
+    }
+
+    const primary = addresses[0] ?? {}
     await supabase.from('contacts').upsert({
       id: form.id, user_id: user.id, name, phone, email, role, company, industry,
-      city, how_met, food_prefs, notes, tags, photo_url,
-      lat: geo?.lat ?? form.lat ?? null, lng: geo?.lng ?? form.lng ?? null,
+      city: primary.city ?? null, how_met, food_prefs, notes, tags, photo_url,
+      lat: primary.lat ?? form.lat ?? null, lng: primary.lng ?? form.lng ?? null,
+      addresses,
     })
 
     await fetch()
-    navigate('/')
+    navigate('/contacts')
   }
 
   const del = async () => {
     if (!confirm('Delete this contact?')) return
     await remove(id)
-    navigate('/')
+    navigate('/contacts')
   }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 md:px-8 lg:py-8">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="space-y-2">
-          <Link to="/" className="inline-flex items-center text-sm font-medium text-violet-600 hover:text-violet-700">
+          <Link to="/contacts" className="inline-flex items-center text-sm font-medium text-violet-600 hover:text-violet-700">
             ← Back to contacts
           </Link>
           <div>
@@ -135,11 +151,15 @@ export default function AddContact() {
             </div>
           </Section>
 
+          <Section title="Addresses">
+            <AddressFields
+              addresses={form.addresses ?? [{ label: 'Home', city: '' }]}
+              onChange={(a) => setForm((f) => ({ ...f, addresses: a }))}
+            />
+          </Section>
+
           <Section title="Personal notes">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <input placeholder="City" {...field('city')} className="input" />
-              <input placeholder="How you met" {...field('how_met')} className="input" />
-            </div>
+            <input placeholder="How you met" {...field('how_met')} className="input" />
             <input placeholder="Food preferences" {...field('food_prefs')} className="input" />
             <textarea placeholder="Notes" rows={5} {...field('notes')} className="input resize-none" />
           </Section>
@@ -160,7 +180,6 @@ export default function AddContact() {
   )
 }
 
-// Labelled group of fields.
 function Section({ title, children }) {
   return (
     <section className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 sm:p-5">
@@ -169,5 +188,46 @@ function Section({ title, children }) {
       </div>
       <div className="flex flex-col gap-3">{children}</div>
     </section>
+  )
+}
+
+function AddressFields({ addresses, onChange }) {
+  const update = (idx, key, value) => {
+    const next = addresses.map((a, i) => (i === idx ? { ...a, [key]: value } : a))
+    onChange(next)
+  }
+  const add = () => onChange([...addresses, { label: 'Other', city: '' }])
+  const remove = (idx) => onChange(addresses.filter((_, i) => i !== idx))
+
+  return (
+    <div className="flex flex-col gap-3">
+      {addresses.map((addr, i) => (
+        <div key={i} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            value={addr.label}
+            onChange={(e) => update(i, 'label', e.target.value)}
+            className="input w-full shrink-0 sm:w-28"
+          >
+            <option>Home</option>
+            <option>Office</option>
+            <option>Other</option>
+          </select>
+          <input
+            placeholder="City"
+            value={addr.city}
+            onChange={(e) => update(i, 'city', e.target.value)}
+            className="input flex-1"
+          />
+          {addresses.length > 1 && (
+            <button type="button" onClick={() => remove(i)} className="text-sm font-medium text-red-500 hover:text-red-600">
+              Remove
+            </button>
+          )}
+        </div>
+      ))}
+      <button type="button" onClick={add} className="self-start text-sm font-medium text-violet-600 hover:text-violet-700">
+        + Add another address
+      </button>
+    </div>
   )
 }

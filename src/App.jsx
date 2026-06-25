@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './store/auth'
 import Login from './components/Login'
 import Shell from './components/Shell'
@@ -17,11 +17,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Shell provides the responsive nav; pages render into its <Outlet>. */}
         <Route element={<Shell />}>
-          <Route path="/" element={<ContactList />} />
+          <Route path="/" element={<MapView />} />
+          <Route path="/contacts" element={<ContactList />} />
           <Route path="/journal" element={<Journal />} />
-          <Route path="/map" element={<MapView />} />
+          <Route path="/map" element={<Navigate to="/" replace />} />
           <Route path="/add" element={<AddContact />} />
           <Route path="/contact/:id" element={<ContactProfile />} />
           <Route path="/contact/:id/edit" element={<AddContact />} />

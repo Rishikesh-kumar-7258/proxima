@@ -54,7 +54,7 @@ export default function ContactProfile() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-6 md:px-8">
       <div className="mb-4 flex items-center justify-between">
-        <Link to="/" className="text-sm font-medium text-violet-600">← Contacts</Link>
+        <Link to="/contacts" className="text-sm font-medium text-violet-600">← Contacts</Link>
         <Link to={`/contact/${id}/edit`} className="text-sm font-medium text-violet-600">Edit</Link>
       </div>
 
@@ -78,9 +78,26 @@ export default function ContactProfile() {
         )}
       </header>
 
+      {/* Addresses */}
+      {contact.addresses?.length > 0 ? (
+        <div className="mt-6">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Addresses</h2>
+          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {contact.addresses.map((a, i) => (
+              <Fact key={i} label={a.label} value={a.city} />
+            ))}
+          </dl>
+        </div>
+      ) : city ? (
+        <div className="mt-6">
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Fact label="City" value={city} />
+          </dl>
+        </div>
+      ) : null}
+
       {/* Quick facts */}
-      <dl className="mt-6 grid grid-cols-2 gap-3">
-        <Fact label="City" value={city} />
+      <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Fact label="Phone" value={phone} />
         <Fact label="Email" value={email} />
         <Fact label="How you met" value={how_met} />

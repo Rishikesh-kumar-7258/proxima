@@ -3,9 +3,9 @@ import { useAuth } from '../store/auth'
 import { Users, MapIcon, Plus, LogOut, Book } from './icons'
 
 const tabs = [
-  { to: '/', label: 'Contacts', Icon: Users, end: true },
+  { to: '/', label: 'Map', Icon: MapIcon, end: true },
+  { to: '/contacts', label: 'Contacts', Icon: Users },
   { to: '/journal', label: 'Journal', Icon: Book },
-  { to: '/map', label: 'Map', Icon: MapIcon },
 ]
 
 // Responsive chrome: a sidebar on desktop, a top bar + bottom tab bar on mobile.
@@ -15,7 +15,7 @@ export default function Shell() {
   return (
     <div className="md:flex">
       {/* Desktop sidebar */}
-      <aside className="hidden md:sticky md:top-0 md:flex md:h-svh md:w-64 md:shrink-0 md:flex-col md:border-r md:border-gray-200 md:bg-white md:p-4">
+      <aside className="hidden md:sticky md:top-0 md:flex md:h-svh md:w-64 md:shrink-0 md:flex-col md:border-r md:border-gray-200 md:bg-white md:p-4 xl:w-72">
         <Brand />
         <nav className="mt-6 flex flex-col gap-1">
           {tabs.map(({ to, label, Icon, end }) => (
@@ -43,10 +43,10 @@ export default function Shell() {
 
       {/* Mobile bottom tab bar */}
       <nav className="fixed inset-x-0 bottom-0 z-20 flex items-stretch border-t border-gray-200 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
-        <Tab to="/" end Icon={Users} label="Contacts" />
-        <Tab to="/journal" Icon={Book} label="Journal" />
+        <Tab to="/" end Icon={MapIcon} label="Map" />
+        <Tab to="/contacts" Icon={Users} label="Contacts" />
         <AddTab />
-        <Tab to="/map" Icon={MapIcon} label="Map" />
+        <Tab to="/journal" Icon={Book} label="Journal" />
       </nav>
     </div>
   )

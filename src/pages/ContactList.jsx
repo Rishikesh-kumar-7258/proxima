@@ -19,7 +19,9 @@ export default function ContactList() {
     const needle = q.trim().toLowerCase()
     if (!needle) return contacts
     return contacts.filter((c) =>
-      [c.name, c.role, c.company, c.city, ...(c.tags ?? [])]
+      [c.name, c.role, c.company, c.city,
+       ...(c.addresses?.map((a) => a.city) ?? []),
+       ...(c.tags ?? [])]
         .filter(Boolean).join(' ').toLowerCase().includes(needle),
     )
   }, [q, contacts])
