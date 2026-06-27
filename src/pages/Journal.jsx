@@ -15,6 +15,9 @@ export default function Journal() {
   const [tagged, setTagged] = useState([]) // contacts to link — from @mention or AI parse
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [filterPerson, setFilterPerson] = useState('')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
 
   // Central journal + each entry's linked contacts, newest first (one nested query).
   const load = async () => {
@@ -30,6 +33,29 @@ export default function Journal() {
   useEffect(() => { (async () => { await fetchContacts(); await load() })() }, [fetchContacts])
 
   const streak = useMemo(() => streakFrom(entries.map((e) => e.date)), [entries])
+
+  // People who actually appear in the log — drives the person filter dropdown.
+  const taggedPeople = useMemo(() => {
+    const m = new Map()
+    for (const e of entries)
+      for (const l of e.journal_contact_links ?? [])
+        if (l.contact) m.set(l.contact.id, l.contact.name)
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [entries])
+
+  const hasFilters = filterPerson || fromDate || toDate
+
+  const filtered = useMemo(() =>
+    entries.filter((e) => {
+      if (filterPerson && !(e.journal_contact_links ?? []).some((l) => l.contact?.id === filterPerson)) return false
+      if (fromDate && e.date < fromDate) return false
+      if (toDate && e.date > toDate) return false
+      return true
+    }),
+    [entries, filterPerson, fromDate, toDate],
+  )
+
+  const clearFilters = () => { setFilterPerson(''); setFromDate(''); setToDate('') }
 
   const post = async () => {
     if (!text.trim()) return
@@ -73,7 +99,11 @@ export default function Journal() {
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Journal</h1>
-          <p className="text-sm text-gray-400">{entries.length} {entries.length === 1 ? 'entry' : 'entries'}</p>
+          <p className="text-sm text-gray-400">
+            {hasFilters
+              ? `${filtered.length} of ${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`
+              : `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'}`}
+          </p>
         </div>
         {streak > 0 && (
           <span className="flex items-center gap-1.5 rounded-full bg-orange-100 px-3 py-1.5 text-sm font-medium text-orange-600">
@@ -92,14 +122,44 @@ export default function Journal() {
         {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-sm text-red-600">{error}</p>}
       </div>
 
+      {/* Filters */}
+      {entries.length > 0 && (
+        <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+            <label className="flex flex-1 flex-col gap-1 sm:min-w-44">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Person</span>
+              <select value={filterPerson} onChange={(e) => setFilterPerson(e.target.value)} className="input">
+                <option value="">Anyone</option>
+                {taggedPeople.map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">From</span>
+              <input type="date" value={fromDate} max={toDate || undefined} onChange={(e) => setFromDate(e.target.value)} className="input" />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">To</span>
+              <input type="date" value={toDate} min={fromDate || undefined} onChange={(e) => setToDate(e.target.value)} className="input" />
+            </label>
+            {hasFilters && (
+              <button type="button" onClick={clearFilters} className="btn-ghost px-4 py-2.5 text-sm">Clear</button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Central log */}
       {loading ? (
         <p className="py-8 text-center text-gray-400">Loading…</p>
       ) : entries.length === 0 ? (
         <p className="py-8 text-center text-gray-400">No entries yet. Write your first above.</p>
+      ) : filtered.length === 0 ? (
+        <p className="py-8 text-center text-gray-400">No entries match these filters.</p>
       ) : (
         <ul className="flex flex-col gap-3">
-          {entries.map((e) => (
+          {filtered.map((e) => (
             <li key={e.id} className="rounded-2xl border border-gray-200 bg-white p-4">
               <p className="mb-1 text-xs text-gray-400">{fmtDate(e.date)}</p>
               <p className="whitespace-pre-wrap">{e.content}</p>
