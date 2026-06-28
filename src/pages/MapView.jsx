@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MapContainer, TileLayer, Circle, CircleMarker, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Circle, CircleMarker, Marker, Popup, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useContacts } from '../hooks/useContacts'
@@ -8,12 +8,19 @@ import { useLocation } from '../hooks/useLocation'
 import { distanceKm } from '../lib/distance'
 import { warmthOf } from '../lib/warmth'
 import PlaceAutocomplete from '../components/PlaceAutocomplete'
+import { Layers, Crosshair } from '../components/icons'
 
 const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 }
 
 const WARMTH_COLORS = { hot: '#22c55e', warm: '#f59e0b', cold: '#9ca3af' }
 
-// --- Custom marker that shows the person's photo (or initials) instead of a stale dot ---
+const TILE_LAYERS = {
+  standard: { name: 'Standard', url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', attr: '&copy; OpenStreetMap' },
+  dark: { name: 'Dark', url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attr: '&copy; OpenStreetMap &copy; CARTO' },
+  satellite: { name: 'Satellite', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr: '&copy; Esri' },
+  topo: { name: 'Terrain', url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr: '&copy; OpenTopoMap' },
+}
+
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;')
 
 function initialsOf(name) {
@@ -62,14 +69,21 @@ function FlyToTarget({ target }) {
   return null
 }
 
-// Leaflet caches the container size; recompute it whenever the layout changes
-// (e.g. entering/leaving fullscreen) so tiles fill the new viewport.
 function InvalidateOnChange({ dep }) {
   const map = useMap()
   useEffect(() => {
     const t = setTimeout(() => map.invalidateSize(), 220)
     return () => clearTimeout(t)
   }, [map, dep])
+  return null
+}
+
+function ClickToPlace({ active, onPlace }) {
+  useMapEvents({
+    click(e) {
+      if (active) onPlace({ lat: e.latlng.lat, lng: e.latlng.lng })
+    },
+  })
   return null
 }
 
@@ -80,23 +94,26 @@ export default function MapView() {
   const [flyTarget, setFlyTarget] = useState(null)
   const [activeFilters, setActiveFilters] = useState(new Set())
   const [customOrigin, setCustomOrigin] = useState(null)
-  const [controlsOpen, setControlsOpen] = useState(true)
+  const [controlsOpen, setControlsOpen] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
+  const [tileKey, setTileKey] = useState('standard')
+  const [clickToPlaceMode, setClickToPlaceMode] = useState(false)
+  const [tileMenuOpen, setTileMenuOpen] = useState(false)
 
   useEffect(() => { fetch() }, [fetch])
 
-  // Origin = a custom place you picked > your live GPS > a neutral default.
   const origin = customOrigin ?? coords ?? DEFAULT_CENTER
   const hasGps = !!coords
   const hasOrigin = !!customOrigin || hasGps
 
-  // Close fullscreen with Escape.
   useEffect(() => {
     if (!fullscreen) return
     const onKey = (e) => e.key === 'Escape' && setFullscreen(false)
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [fullscreen])
+
+  const tile = TILE_LAYERS[tileKey]
 
   const allLocated = useMemo(() =>
     contacts.flatMap((c) => {
@@ -122,7 +139,6 @@ export default function MapView() {
     [contacts, origin],
   )
 
-  // Unique labels (+ counts) for the filter chips.
   const availableLabels = useMemo(() => {
     const labels = new Map()
     for (const item of allLocated) {
@@ -132,7 +148,6 @@ export default function MapView() {
     return labels
   }, [allLocated])
 
-  // Markers shown on the map: label filter only (radius is shown via highlight).
   const located = useMemo(() => {
     if (activeFilters.size === 0) return allLocated
     return allLocated.filter((c) => activeFilters.has(c.addressLabel))
@@ -140,8 +155,6 @@ export default function MapView() {
 
   const inRadius = (d) => hasOrigin && d <= radius
 
-  // Distance list: people inside the radius only (falls back to all when we
-  // have no origin to measure from).
   const listItems = useMemo(
     () => (hasOrigin ? located.filter((c) => c.dist <= radius) : located),
     [located, hasOrigin, radius],
@@ -161,65 +174,158 @@ export default function MapView() {
     return !hasAddr && c.lat == null
   }).length
 
-  const originLabel = customOrigin
-    ? [customOrigin.city, customOrigin.country].filter(Boolean).join(', ') || 'Custom location'
-    : hasGps ? 'Your live location' : 'Default map center'
+  const handleClickPlace = (pos) => {
+    setCustomOrigin(pos)
+    setClickToPlaceMode(false)
+  }
 
-  if (loading) return <div className="grid min-h-[60svh] place-items-center text-gray-400">Locating you…</div>
+  if (loading) return <div className="grid min-h-[60svh] place-items-center text-gray-400">Locating you...</div>
 
   const initialZoom = hasOrigin ? 11 : 4
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 md:px-8">
-      <div className="mb-5 flex flex-col gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Nearby</h1>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700">
-            {hasOrigin ? `${listItems.length} within ${radius} km` : `${located.length} mapped`}
-            {noLocation > 0 && ` · ${noLocation} without location`}
-          </span>
-          {customOrigin ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1.5 font-medium text-violet-700">
-              Viewing from {customOrigin.city || 'custom location'}
-              <button onClick={() => setCustomOrigin(null)} className="text-violet-500 hover:text-violet-900" aria-label="Reset location">✕</button>
+    <div className="mx-auto max-w-7xl overflow-x-hidden px-2 py-3 sm:px-4 sm:py-4 md:px-8 md:py-6">
+      {/* Header */}
+      <div className="mb-4 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Nearby</h1>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="rounded-full bg-gray-100 px-3 py-1.5 font-medium text-gray-700">
+              {hasOrigin ? `${listItems.length} within ${radius} km` : `${located.length} mapped`}
+              {noLocation > 0 && ` · ${noLocation} without location`}
             </span>
-          ) : hasGps ? (
-            <span className="rounded-full bg-green-100 px-3 py-1.5 font-medium text-green-700">Live location active</span>
-          ) : (
-            <span className="rounded-full bg-amber-100 px-3 py-1.5 font-medium text-amber-700">Using default map center</span>
-          )}
+          </div>
+        </div>
+
+        {/* Full-width ViewFrom input */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <PlaceAutocomplete value={customOrigin} onSelect={setCustomOrigin} />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setClickToPlaceMode((m) => !m)}
+              className={`flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${clickToPlaceMode ? 'border-violet-300 bg-violet-50 text-violet-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+              title="Click on the map to set your viewing location"
+            >
+              <Crosshair className="size-4" />
+              <span className="hidden sm:inline">{clickToPlaceMode ? 'Click map...' : 'Place marker'}</span>
+            </button>
+            {customOrigin && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1.5 text-sm font-medium text-violet-700">
+                Viewing from {customOrigin.city || 'custom'}
+                <button onClick={() => setCustomOrigin(null)} className="text-violet-500 hover:text-violet-900" aria-label="Reset location">x</button>
+              </span>
+            )}
+            {!customOrigin && hasGps && (
+              <span className="rounded-full bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700">Live location</span>
+            )}
+            {!customOrigin && !hasGps && (
+              <span className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-700">Default center</span>
+            )}
+          </div>
         </div>
       </div>
 
-      <div className={`grid gap-4 ${fullscreen ? '' : 'lg:grid-cols-[minmax(0,1.7fr)_22rem] xl:grid-cols-[minmax(0,1.9fr)_24rem]'}`}>
+      <div>
         {/* Map */}
         <div
           className={
             fullscreen
               ? 'fixed inset-0 z-[1000] bg-white'
-              : 'relative isolate h-[62vh] w-full overflow-hidden rounded-[28px] border border-gray-200 bg-white shadow-sm sm:h-[70vh] lg:h-[78vh]'
+              : 'relative isolate h-[55svh] rounded-xl border border-gray-200 bg-white shadow-sm sm:rounded-2xl md:rounded-[28px] sm:h-[60svh] lg:h-[74vh]'
           }
         >
-          {/* Floating controls (top-left) */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] flex items-start justify-between gap-2 p-3">
-            <div className="pointer-events-auto w-[min(20rem,calc(100vw-5rem))] overflow-hidden rounded-2xl border border-white/30 bg-white/95 shadow-lg shadow-gray-900/10 backdrop-blur">
+          {/* Fullscreen: floating search + place marker */}
+          {fullscreen && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-[500] p-3">
+              <div className="pointer-events-auto mx-auto flex max-w-xl items-center gap-2">
+                <button
+                  onClick={() => setFullscreen(false)}
+                  className="grid size-10 shrink-0 place-items-center rounded-full bg-white/95 text-violet-700 shadow-lg backdrop-blur hover:bg-white"
+                  aria-label="Exit fullscreen"
+                  title="Exit fullscreen (Esc)"
+                >
+                  ✕
+                </button>
+                <div className="min-w-0 flex-1 rounded-2xl bg-white/95 shadow-lg backdrop-blur">
+                  <PlaceAutocomplete value={customOrigin} onSelect={setCustomOrigin} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setClickToPlaceMode((m) => !m)}
+                  className={`grid size-10 shrink-0 place-items-center rounded-full shadow-lg backdrop-blur transition ${clickToPlaceMode ? 'bg-violet-600 text-white' : 'bg-white/95 text-gray-600 hover:bg-white hover:text-violet-700'}`}
+                  title="Click on the map to set your viewing location"
+                >
+                  <Crosshair className="size-5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Click-to-place banner */}
+          {clickToPlaceMode && (
+            <div className={`pointer-events-none absolute inset-x-0 z-[500] flex justify-center ${fullscreen ? 'top-16' : 'top-0'} p-3`}>
+              <span className="pointer-events-auto rounded-full bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-lg">
+                Click anywhere on the map to set your location
+                <button onClick={() => setClickToPlaceMode(false)} className="ml-2 text-violet-200 hover:text-white">x</button>
+              </span>
+            </div>
+          )}
+
+          {/* Top-left: Fullscreen toggle (non-fullscreen only) */}
+          {!fullscreen && (
+            <div className="pointer-events-none absolute left-0 top-0 z-[500] p-3">
+              <button
+                onClick={() => setFullscreen(true)}
+                className="pointer-events-auto grid size-10 place-items-center rounded-full bg-white/95 text-violet-700 shadow-lg backdrop-blur hover:bg-white"
+                aria-label="Enter fullscreen"
+                title="Fullscreen"
+              >
+                ⛶
+              </button>
+            </div>
+          )}
+
+          {/* Bottom-right controls */}
+          <div className="pointer-events-none absolute bottom-0 right-0 z-[500] flex flex-col items-end gap-2 p-3">
+            {/* Tile layer picker */}
+            <div className="pointer-events-auto relative">
+              <button
+                onClick={() => setTileMenuOpen((o) => !o)}
+                className="grid size-10 place-items-center rounded-full bg-white/95 text-gray-600 shadow-lg backdrop-blur hover:bg-white hover:text-violet-700"
+                title="Map style"
+              >
+                <Layers className="size-5" />
+              </button>
+              {tileMenuOpen && (
+                <div className="absolute bottom-12 right-0 w-36 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+                  {Object.entries(TILE_LAYERS).map(([key, layer]) => (
+                    <button
+                      key={key}
+                      onClick={() => { setTileKey(key); setTileMenuOpen(false) }}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition ${tileKey === key ? 'bg-violet-50 font-medium text-violet-700' : 'text-gray-700 hover:bg-gray-50'}`}
+                    >
+                      {layer.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Expandable controls panel */}
+            <div className="pointer-events-auto w-[min(18rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-white/30 bg-white/95 shadow-lg shadow-gray-900/10 backdrop-blur">
               <button
                 onClick={() => setControlsOpen((o) => !o)}
                 className="flex w-full items-center justify-between gap-2 px-4 py-2.5 text-left"
               >
-                <span className="text-sm font-semibold text-gray-900">Map controls</span>
-                <span className={`text-gray-400 transition ${controlsOpen ? 'rotate-180' : ''}`}>▾</span>
+                <span className="text-sm font-semibold text-gray-900">Controls</span>
+                <span className={`text-gray-400 transition ${controlsOpen ? 'rotate-180' : ''}`}>{'▾'}</span>
               </button>
 
               {controlsOpen && (
-                <div className="max-h-[60vh] space-y-4 overflow-y-auto border-t border-gray-100 px-4 pb-4 pt-3">
-                  {/* Origin */}
-                  <div>
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-400">Viewing from</p>
-                    <PlaceAutocomplete value={customOrigin} onSelect={setCustomOrigin} />
-                    <p className="mt-1 truncate text-[11px] text-gray-400">{originLabel}</p>
-                  </div>
-
+                <div className="max-h-[50vh] space-y-4 overflow-y-auto border-t border-gray-100 px-4 pb-4 pt-3">
                   {/* Radius */}
                   <div>
                     <div className="mb-1 flex items-center justify-between">
@@ -265,23 +371,19 @@ export default function MapView() {
                 </div>
               )}
             </div>
-
-            {/* Fullscreen toggle (top-right) */}
-            <button
-              onClick={() => setFullscreen((f) => !f)}
-              className="pointer-events-auto grid size-10 shrink-0 place-items-center rounded-full bg-white/95 text-violet-700 shadow-lg backdrop-blur hover:bg-white"
-              aria-label={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-              title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
-            >
-              {fullscreen ? '✕' : '⛶'}
-            </button>
           </div>
 
-          <MapContainer center={[origin.lat, origin.lng]} zoom={initialZoom} className="h-full w-full" zoomControl={false}>
-            <TileLayer attribution="&copy; OpenStreetMap" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <MapContainer
+            center={[origin.lat, origin.lng]}
+            zoom={initialZoom}
+            className={`h-full w-full ${clickToPlaceMode ? 'cursor-crosshair' : ''}`}
+            zoomControl={false}
+          >
+            <TileLayer attribution={tile.attr} url={tile.url} />
             <RecenterMap center={[origin.lat, origin.lng]} zoom={initialZoom} />
             <FlyToTarget target={flyTarget} />
             <InvalidateOnChange dep={fullscreen} />
+            <ClickToPlace active={clickToPlaceMode} onPlace={handleClickPlace} />
 
             {hasOrigin && (
               <>
@@ -324,14 +426,14 @@ export default function MapView() {
         </div>
 
         {/* Distance-sorted list (hidden in fullscreen) */}
-        <div className={fullscreen ? 'hidden' : 'rounded-[28px] border border-gray-200 bg-white p-3 shadow-sm lg:flex lg:h-[78vh] lg:flex-col lg:overflow-hidden'}>
+        <div className={fullscreen ? 'hidden' : 'rounded-xl border border-gray-200 bg-white p-3 shadow-sm sm:rounded-2xl md:rounded-[28px] lg:flex lg:h-[74vh] lg:flex-col lg:overflow-hidden'}>
           <div className="mb-3 flex items-center justify-between gap-3 px-1 pt-1">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-500">Distance list</h2>
               <p className="text-sm text-gray-400">{hasOrigin ? `Inside ${radius} km · nearest first` : 'Nearest first'}</p>
             </div>
           </div>
-          <ul className="flex max-h-[45vh] flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none lg:flex-1">
+          <ul className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto pr-1 lg:max-h-none lg:flex-1">
             {listItems.map((c) => {
               const w = warmthOf(c.last_interaction)
               return (

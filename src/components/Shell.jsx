@@ -37,7 +37,7 @@ export default function Shell() {
       </header>
 
       {/* Page content */}
-      <main className="min-w-0 flex-1 pb-24 md:pb-12">
+      <main className="min-w-0 flex-1 overflow-x-hidden pb-24 md:pb-12">
         <Outlet />
       </main>
 

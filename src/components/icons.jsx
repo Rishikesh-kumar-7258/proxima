@@ -28,3 +28,24 @@ export const Flame = (p) => (
 export const Sparkles = (p) => (
   <svg {...base} {...p}><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" /><path d="M19 15l.7 1.8L21.5 17.5l-1.8.7L19 20l-.7-1.8L16.5 17.5l1.8-.7L19 15Z" /></svg>
 )
+export const BoldIcon = (p) => (
+  <svg {...base} {...p}><path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" /><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z" /></svg>
+)
+export const ItalicIcon = (p) => (
+  <svg {...base} {...p}><path d="M19 4h-9M14 20H5M15 4 9 20" /></svg>
+)
+export const LinkIcon = (p) => (
+  <svg {...base} {...p}><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
+)
+export const Pen = (p) => (
+  <svg {...base} {...p}><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /></svg>
+)
+export const Layers = (p) => (
+  <svg {...base} {...p}><path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z" /><path d="m2 12 8.58 3.91a2 2 0 0 0 1.66 0L21 12" /><path d="m2 17 8.58 3.91a2 2 0 0 0 1.66 0L21 17" /></svg>
+)
+export const Crosshair = (p) => (
+  <svg {...base} {...p}><circle cx="12" cy="12" r="10" /><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4" /></svg>
+)
+export const ArrowLeft = (p) => (
+  <svg {...base} {...p}><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg>
+)

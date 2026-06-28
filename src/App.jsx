@@ -7,12 +7,13 @@ import ContactProfile from './pages/ContactProfile'
 import AddContact from './pages/AddContact'
 import MapView from './pages/MapView'
 import Journal from './pages/Journal'
+import JournalCompose from './pages/JournalCompose'
 
 export default function App() {
   const { session, loading } = useAuth()
 
-  if (loading) return null // wait out the initial session check, then render once
-  if (!session) return <Login /> // single auth gate — no routing until signed in
+  if (loading) return null
+  if (!session) return <Login />
 
   return (
     <BrowserRouter>
@@ -21,6 +22,7 @@ export default function App() {
           <Route path="/" element={<MapView />} />
           <Route path="/contacts" element={<ContactList />} />
           <Route path="/journal" element={<Journal />} />
+          <Route path="/journal/new" element={<JournalCompose />} />
           <Route path="/map" element={<Navigate to="/" replace />} />
           <Route path="/add" element={<AddContact />} />
           <Route path="/contact/:id" element={<ContactProfile />} />
